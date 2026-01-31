@@ -50,6 +50,7 @@ astrbot_plugin_iflow/
 ├── main.py           # 主插件文件
 ├── metadata.yaml     # 插件元数据
 ├── README.md         # 说明文档
+├── AGENTS.md         # AI Agent 上下文文档
 └── LICENSE           # 许可证
 ```
 
