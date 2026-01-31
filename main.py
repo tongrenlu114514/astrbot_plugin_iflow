@@ -56,7 +56,17 @@ class ACPClient:
                 response = await asyncio.wait_for(
                     self.websocket.recv(), timeout=remaining
                 )
-                data = json.loads(response)
+
+                # 验证响应内容
+                if not response or not isinstance(response, str):
+                    logger.warning(f"接收到空响应或非字符串响应: {type(response)}")
+                    continue
+
+                try:
+                    data = json.loads(response)
+                except json.JSONDecodeError as e:
+                    logger.error(f"JSON 解析失败，响应内容: {response[:200] if len(response) > 200 else response}")
+                    raise RuntimeError(f"无效的 JSON 响应: {e}")
 
                 # 处理不同类型的消息
                 if data.get("type") == "agent_message_chunk":
