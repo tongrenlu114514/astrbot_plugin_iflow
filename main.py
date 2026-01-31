@@ -101,7 +101,7 @@ class IFlowPlugin(Star):
         self.iflow_available = False
         self.iflow_enabled = True
         self.timeout = 30  # 默认超时30秒
-        self.acp_url = os.getenv("IFLOW_ACP_URL", "ws://121.37.183.44:8090/acp")
+        self.acp_url = os.getenv("IFLOW_ACP_URL", "ws://host.docker.internal:8090/acp")
         self.acp_client: Optional[ACPClient] = None
 
     async def initialize(self):

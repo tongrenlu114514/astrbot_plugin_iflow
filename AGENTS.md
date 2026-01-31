@@ -201,7 +201,7 @@ AstrBot 加载插件
 
 | 变量名 | 默认值 | 说明 |
 |--------|--------|------|
-| `IFLOW_ACP_URL` | `ws://121.37.183.44:8090/acp` | iFlow ACP 服务地址 |
+| `IFLOW_ACP_URL` | `ws://host.docker.internal:8090/acp` | iFlow ACP 服务地址 |
 
 ### metadata.yaml
 
