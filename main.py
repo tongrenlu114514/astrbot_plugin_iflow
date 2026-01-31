@@ -28,7 +28,7 @@ class IFlowPlugin(Star):
         """插件初始化方法，创建 iFlow SDK 客户端"""
         try:
             # 获取插件数据目录作为工作目录
-            plugin_data_dir = str(get_astrbot_data_path() / "plugin_data" / self.name)
+            plugin_data_dir = os.path.join(get_astrbot_data_path(), "plugin_data", self.name)
             
             # 确保目录存在
             os.makedirs(plugin_data_dir, exist_ok=True)
