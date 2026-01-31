@@ -36,7 +36,7 @@ AstrBot plugin that automatically forwards messages to iFlow CLI via ACP protoco
 3. **容器网络配置**
 
    如果 AstrBot 运行在 Docker 容器中，确保容器可以访问宿主机的 8090 端口：
-   - 使用宿主机 IP 地址（如 `121.37.183.44`）直接访问
+   - 使用 `host.docker.internal` 访问宿主机（Docker Desktop 默认支持）
    - 确保防火墙允许 8090 端口的入站连接
    - 或使用 `--network host` 模式运行容器
 
@@ -64,7 +64,7 @@ AstrBot plugin that automatically forwards messages to iFlow CLI via ACP protoco
 
 | 变量名 | 默认值 | 说明 |
 |--------|--------|------|
-| `IFLOW_ACP_URL` | `ws://121.37.183.44:8090/acp` | iFlow ACP 服务地址 |
+| `IFLOW_ACP_URL` | `ws://host.docker.internal:8090/acp` | iFlow ACP 服务地址 |
 
 ### 插件配置
 
