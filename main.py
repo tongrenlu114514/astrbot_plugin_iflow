@@ -3,7 +3,14 @@ from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger
 
-@register("astrbot_plugin_iflow", "tongrenlu114514", "AstrBot iflow 插件 - 转发消息到 iFlow CLI", "v1.0.0", "https://github.com/tongrenlu114514/astrbot_plugin_iflow")
+
+@register(
+    "astrbot_plugin_iflow",
+    "tongrenlu114514",
+    "AstrBot iflow 插件 - 转发消息到 iFlow CLI",
+    "v1.0.0",
+    "https://github.com/tongrenlu114514/astrbot_plugin_iflow",
+)
 class IFlowPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
@@ -16,9 +23,10 @@ class IFlowPlugin(Star):
         try:
             # 检查 iflow 命令是否可用
             proc = await asyncio.create_subprocess_exec(
-                "iflow", "--version",
+                "iflow",
+                "--version",
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
             )
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=5)
             if proc.returncode == 0:
@@ -43,22 +51,25 @@ class IFlowPlugin(Star):
         try:
             # 调用 iFlow CLI 处理消息
             proc = await asyncio.create_subprocess_exec(
-                "iflow", message_str,
+                "iflow",
+                message_str,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
             )
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=self.timeout)
-            
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(), timeout=self.timeout
+            )
+
             if stdout:
                 result = stdout.decode().strip()
                 if result:
                     yield event.plain_result(result)
-            
+
             if stderr:
                 error_msg = stderr.decode().strip()
                 if error_msg:
                     logger.error(f"iFlow CLI 错误: {error_msg}")
-                    
+
         except asyncio.TimeoutError:
             logger.error(f"iFlow CLI 处理超时（{self.timeout}秒）")
             yield event.plain_result("iFlow 处理超时，请稍后重试")
@@ -68,7 +79,7 @@ class IFlowPlugin(Star):
     @filter.command("iflow")
     async def iflow_cmd(self, event: AstrMessageEvent, action: str = None):
         """iFlow 插件控制指令
-        
+
         Args:
             action(string): 操作类型 (on/off/status)
         """
