@@ -26,14 +26,18 @@ class IFlowPlugin(Star):
     async def initialize(self):
         """插件初始化方法，创建 iFlow SDK 客户端"""
         try:
+            # 获取当前工作目录
+            cwd = os.getcwd()
+            
             # 配置 iFlow SDK 选项
             options = IFlowOptions(
                 url=self.acp_url,
                 auto_start_process=False,  # 假设 iFlow 已独立运行
                 timeout=self.timeout,
+                cwd=cwd,  # 设置工作目录为当前目录
             )
             self.client = IFlowClient(options)
-            logger.info(f"iFlow SDK 客户端已初始化，连接地址: {self.acp_url}")
+            logger.info(f"iFlow SDK 客户端已初始化，连接地址: {self.acp_url}，工作目录: {cwd}")
         except Exception as e:
             logger.error(f"初始化 iFlow SDK 客户端失败: {e}")
 
