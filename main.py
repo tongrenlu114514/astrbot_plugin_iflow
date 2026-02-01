@@ -84,16 +84,31 @@ class IFlowPlugin(Star):
             # 解析会话信息
             session_type, target_id = self._parse_session_id(session_id)
             
-            # 创建会话专用工作目录
+            # 创建会话专用工作目录（本地）
             session_dir = os.path.join(self.sessions_dir, session_id)
             os.makedirs(session_dir, exist_ok=True)
             
-            # 配置 iFlow SDK 选项
+            # 在服务器上创建对应的工作目录
+            server_session_dir = f"/Astrbot/data/plugin_data/astrbot_plugin_iflow/sessions/{session_id}"
+            try:
+                import subprocess
+                subprocess.run(
+                    ["ssh", "iflowuser@121.37.183.44", f"mkdir -p {server_session_dir}"],
+                    check=True,
+                    capture_output=True,
+                    timeout=10
+                )
+                logger.info(f"服务器目录创建成功: {server_session_dir}")
+            except Exception as e:
+                logger.warning(f"服务器目录创建失败: {e}，继续使用默认目录")
+            
+            # 配置 iFlow SDK 选项（使用服务器路径作为 cwd）
+            server_session_dir = f"/Astrbot/data/plugin_data/astrbot_plugin_iflow/sessions/{session_id}"
             options = IFlowOptions(
                 url=self.acp_url,
                 auto_start_process=False,
                 timeout=self.timeout,
-                cwd=session_dir,
+                cwd=server_session_dir,  # 使用服务器上的路径
                 file_access=False,
             )
             
@@ -360,17 +375,26 @@ class IFlowPlugin(Star):
         workspace_dir = session_meta["workspace_dir"]
         
         try:
-            # 验证工作目录是否存在
-            if not os.path.exists(workspace_dir):
-                logger.warning(f"会话 {session_id} 的工作目录不存在，跳过恢复: {workspace_dir}")
-                return False
+            # 在服务器上创建会话目录（如果不存在）
+            server_session_dir = f"/Astrbot/data/plugin_data/astrbot_plugin_iflow/sessions/{session_id}"
+            try:
+                import subprocess
+                subprocess.run(
+                    ["ssh", "iflowuser@121.37.183.44", f"mkdir -p {server_session_dir}"],
+                    check=True,
+                    capture_output=True,
+                    timeout=10
+                )
+                logger.info(f"服务器目录已创建/验证: {server_session_dir}")
+            except Exception as e:
+                logger.warning(f"服务器目录验证失败: {e}")
             
-            # 配置 iFlow SDK 选项
+            # 配置 iFlow SDK 选项（使用服务器路径）
             options = IFlowOptions(
                 url=self.acp_url,
                 auto_start_process=False,
                 timeout=self.timeout,
-                cwd=workspace_dir,
+                cwd=server_session_dir,  # 使用服务器上的路径
                 file_access=False,
             )
             
