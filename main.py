@@ -88,8 +88,11 @@ class IFlowPlugin(Star):
             session_dir = os.path.join(self.sessions_dir, session_id)
             os.makedirs(session_dir, exist_ok=True)
             
+            # 获取服务器上的插件数据目录路径
+            server_base_dir = os.path.join(get_astrbot_data_path(), "plugin_data", self.name)
+            server_session_dir = os.path.join(server_base_dir, "sessions", session_id)
+            
             # 在服务器上创建对应的工作目录
-            server_session_dir = f"/Astrbot/data/plugin_data/astrbot_plugin_iflow/sessions/{session_id}"
             try:
                 import subprocess
                 subprocess.run(
@@ -103,7 +106,6 @@ class IFlowPlugin(Star):
                 logger.warning(f"服务器目录创建失败: {e}，继续使用默认目录")
             
             # 配置 iFlow SDK 选项（使用服务器路径作为 cwd）
-            server_session_dir = f"/Astrbot/data/plugin_data/astrbot_plugin_iflow/sessions/{session_id}"
             options = IFlowOptions(
                 url=self.acp_url,
                 auto_start_process=False,
@@ -372,11 +374,13 @@ class IFlowPlugin(Star):
             bool: 恢复是否成功
         """
         session_id = session_meta["session_id"]
-        workspace_dir = session_meta["workspace_dir"]
         
         try:
+            # 获取服务器上的插件数据目录路径
+            server_base_dir = os.path.join(get_astrbot_data_path(), "plugin_data", self.name)
+            server_session_dir = os.path.join(server_base_dir, "sessions", session_id)
+            
             # 在服务器上创建会话目录（如果不存在）
-            server_session_dir = f"/Astrbot/data/plugin_data/astrbot_plugin_iflow/sessions/{session_id}"
             try:
                 import subprocess
                 subprocess.run(
