@@ -7,7 +7,7 @@ from typing import Optional, Dict
 from iflow_sdk import IFlowClient, IFlowOptions, AssistantMessage, TaskFinishMessage
 from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
 from astrbot.api.star import Context, Star, register
-from astrbot.api import logger
+from astrbot.api import logger, AstrBotConfig
 from astrbot.core.utils.astrbot_path import get_astrbot_data_path
 
 
@@ -19,11 +19,13 @@ from astrbot.core.utils.astrbot_path import get_astrbot_data_path
     "https://github.com/tongrenlu114514/astrbot_plugin_iflow",
 )
 class IFlowPlugin(Star):
-    def __init__(self, context: Context):
+    def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
-        self.iflow_enabled = True
-        self.timeout = 30  # 默认超时30秒
-        self.acp_url = os.getenv("IFLOW_ACP_URL", "ws://host.docker.internal:8090/acp")
+        # 从配置文件读取设置
+        self.config = config
+        self.iflow_enabled = config.get("enabled", True)
+        self.timeout = config.get("timeout", 30)
+        self.acp_url = config.get("acp_url", "ws://host.docker.internal:8090/acp")
         
         # 会话池相关属性
         self.sessions: Dict[str, IFlowClient] = {}  # 会话池: session_id -> client
@@ -493,10 +495,14 @@ class IFlowPlugin(Star):
             
         elif action == "on":
             self.iflow_enabled = True
+            self.config["enabled"] = True
+            self.config.save_config()
             yield event.plain_result("iFlow 消息转发已启用")
             
         elif action == "off":
             self.iflow_enabled = False
+            self.config["enabled"] = False
+            self.config.save_config()
             yield event.plain_result("iFlow 消息转发已禁用")
             
         elif action == "status":
