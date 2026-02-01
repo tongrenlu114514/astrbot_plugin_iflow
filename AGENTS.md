@@ -8,9 +8,9 @@
 
 **项目类型**: Python 插件项目
 
-**主要目的**: 为 AstrBot 提供与 iFlow CLI 的集成功能，通过 ACP 协议实现消息自动转发和处理结果回复。支持容器化部署场景。
+**主要目的**: 为 AstrBot 提供与 iFlow CLI 的集成功能，通过 iFlow CLI SDK 实现 ACP 协议消息自动转发和处理结果回复。支持容器化部署场景。
 
-**当前版本**: v1.0.0
+**当前版本**: v2.0.0
 
 **许可证**: GNU Affero General Public License v3.0 (AGPL-3.0)
 
@@ -24,16 +24,16 @@
 - **框架**: AstrBot Plugin SDK (astrbot.api)
 - **通信协议**: ACP (Agent Communication Protocol) v1
 - **传输方式**: WebSocket
+- **SDK**: iflow-cli-sdk >= 0.1.11
 - **依赖工具**:
   - AstrBot >= v4.0.0
   - iFlow CLI (作为守护进程运行)
-  - websockets >= 12.0
 - **核心库**:
   - `asyncio` - 异步编程和超时控制
-  - `websockets` - WebSocket 客户端
-  - `json` - ACP 消息序列化
+  - `iflow_sdk` - iFlow CLI SDK（提供 IFlowClient、IFlowOptions、AssistantMessage、TaskFinishMessage 等）
   - `astrbot.api.event` - 事件监听和消息处理
   - `astrbot.api.star` - 插件基类和注册机制
+  - `astrbot.core.utils.astrbot_path` - 获取 AstrBot 数据目录
 
 ## 项目结构
 
@@ -58,7 +58,7 @@ astrbot_plugin_iflow/
 │  ┌──────────────────────────────────────────────────┐  │
 │  │              iFlow 插件                           │  │
 │  │  ┌────────────┐      ┌──────────────────────┐   │  │
-│  │  │ 消息监听器 │ ───→ │   ACP WebSocket 客户端│   │  │
+│  │  │ 消息监听器 │ ───→ │  iFlow CLI SDK 客户端│   │  │
 │  │  └────────────┘      └──────────┬───────────┘   │  │
 │  │                                   │               │  │
 │  └───────────────────────────────────┼───────────────┘  │
@@ -88,11 +88,10 @@ astrbot_plugin_iflow/
 
 #### 主要属性
 
-- `iflow_available: bool` - 标记 iFlow ACP 服务是否可用
 - `iflow_enabled: bool` - 控制消息转发是否启用
 - `timeout: int` - iFlow 处理超时时间（默认30秒）
 - `acp_url: str` - ACP 服务地址（默认 `ws://host.docker.internal:8090/acp`）
-- `acp_client: Optional[ACPClient]` - ACP WebSocket 客户端实例
+- `client: Optional[IFlowClient]` - iFlow SDK 客户端实例
 
 #### 生命周期方法
 
@@ -103,12 +102,13 @@ astrbot_plugin_iflow/
 
 2. **`async initialize(self)`**
    - 插件加载时自动调用
-   - 创建 ACP 客户端并连接到 iFlow ACP 服务
-   - 设置 `iflow_available` 状态
+   - 获取插件数据目录作为工作目录
+   - 配置并创建 iFlow SDK 客户端实例
+   - 设置工作目录和文件访问选项
 
 3. **`async terminate(self)`**
    - 插件卸载/停用时调用
-   - 关闭 WebSocket 连接
+   - 关闭 SDK 客户端连接
    - 清理资源
 
 #### 核心功能方法
@@ -117,9 +117,10 @@ astrbot_plugin_iflow/
    - 监听所有消息事件（群聊和私聊）
    - 优先级设为 1，确保先于其他插件执行
    - 处理流程：
-     - 检查 iFlow 可用性和启用状态
+     - 检查 iFlow 客户端可用性和启用状态
      - 提取消息内容（跳过空消息）
-     - 通过 ACP 协议发送消息到 iFlow
+     - 使用上下文管理器 `async with self.client:` 管理 SDK 生命周期
+     - 通过 SDK 发送消息到 iFlow
      - 流式接收响应并累积
      - 回复用户处理结果
      - 处理超时和异常情况
@@ -132,24 +133,24 @@ astrbot_plugin_iflow/
      - `off`: 禁用消息转发
      - `status`: 显示详细状态
 
-### ACP 客户端类: `ACPClient`
+### SDK 客户端: `IFlowClient`
 
-负责与 iFlow ACP 服务的 WebSocket 通信。
+使用 `iflow_cli_sdk` 提供的 SDK 客户端，负责与 iFlow ACP 服务的通信。
 
-#### 主要方法
+#### SDK 配置选项 (`IFlowOptions`)
 
-- `async connect() -> bool` - 连接到 iFlow ACP 服务
-- `async send_message(content: str, timeout: int) -> str` - 发送消息并获取响应
-- `async close()` - 关闭连接
+- `url` - ACP 服务地址
+- `auto_start_process` - 是否自动启动 iFlow 进程（设为 false，假设 iFlow 已独立运行）
+- `timeout` - 超时时间
+- `cwd` - 工作目录（设置为插件数据目录）
+- `file_access` - 文件访问权限（设为 false，避免路径检查问题）
 
-#### ACP 消息类型
+#### SDK 消息类型
 
-| 消息类型 | 方向 | 说明 |
+| 消息类型 | 类型 | 说明 |
 |----------|------|------|
-| `user_message` | 发送 | 用户消息 |
-| `agent_message_chunk` | 接收 | AI 响应片段 |
-| `task_finish` | 接收 | 任务完成 |
-| `error` | 接收 | 错误消息 |
+| `AssistantMessage` | 接收 | AI 助手响应片段 |
+| `TaskFinishMessage` | 接收 | 任务完成信号 |
 
 ## 工作流程
 
@@ -162,15 +163,17 @@ AstrBot 接收消息
     ↓
 触发 on_message 监听器（priority=1）
     ↓
-检查 iFlow ACP 可用性和启用状态
+检查 iFlow SDK 客户端可用性和启用状态
     ↓
 提取消息内容
     ↓
-通过 WebSocket 发送 ACP user_message
+使用 async with 上下文管理器管理 SDK 客户端
+    ↓
+通过 SDK 发送消息
     ↓
 等待并流式接收响应
-    ├─ agent_message_chunk → 累积响应内容
-    └─ task_finish → 结束接收
+    ├─ AssistantMessage → 累积响应内容
+    └─ TaskFinishMessage → 结束接收
     ↓
 回复用户处理结果
 ```
@@ -184,15 +187,15 @@ AstrBot 加载插件
     ↓
 读取 ACP 服务地址配置
     ↓
-创建 ACPClient 实例
-    ↓
 调用 initialize()
     ↓
-连接到 iFlow ACP WebSocket 服务
+获取插件数据目录作为工作目录
     ↓
-设置 iflow_available 状态
+配置 IFlowOptions（url, timeout, cwd, file_access 等）
     ↓
-记录连接结果
+创建 IFlowClient 实例
+    ↓
+记录初始化结果
 ```
 
 ## 配置
@@ -210,10 +213,10 @@ AstrBot 加载插件
 ```yaml
 name: astrbot_plugin_iflow          # 插件唯一标识
 display_name: iFlow 插件            # 显示名称
-desc: AstrBot iFlow 插件...         # 功能描述
-version: v1.0.0                      # 版本号
+desc: AstrBot iFlow 插件 - 自动转发消息到 iFlow CLI (心流 CLI) 并回复处理结果
+version: v2.0.0                      # 版本号
 author: tongrenlu114514              # 作者
-repo: https://github.com/...         # 仓库地址
+repo: https://github.com/tongrenlu114514/astrbot_plugin_iflow
 ```
 
 ### requirements.txt
@@ -221,47 +224,69 @@ repo: https://github.com/...         # 仓库地址
 Python 依赖管理文件：
 
 ```
-websockets>=12.0
+iflow-cli-sdk >= 0.1.11
 ```
 
 ## 关键设计决策
 
-### 1. ACP 协议通信
+### 1. 使用 iFlow CLI SDK
+
+采用官方提供的 `iflow-cli-sdk` SDK 而非直接实现 WebSocket 通信：
+- 减少维护成本和复杂度
+- 自动处理 ACP 协议细节
+- 获得官方支持和更新
+- 更好的类型安全和代码可读性
+
+### 2. ACP 协议通信
 
 使用标准的 Agent Communication Protocol (ACP) 进行通信，而非直接调用命令行进程，这样可以：
 - 支持容器化部署场景
 - 实现流式响应
 - 更好的错误处理和状态管理
 
-### 2. 守护进程模式
+### 3. 守护进程模式
 
 iFlow CLI 在宿主机上以守护进程方式常驻运行，提供 ACP 服务：
 - 避免每次启动的开销
 - 容器无法直接访问宿主机进程的完美解决方案
 - 支持多个客户端并发连接
 
-### 3. WebSocket 连接
+### 4. 上下文管理器
 
-使用 WebSocket 而非 HTTP REST API：
-- 支持双向通信
-- 实时流式响应
-- 更低的延迟
+使用 `async with self.client:` 上下文管理器管理 SDK 生命周期：
+- 自动管理连接的打开和关闭
+- 确保资源正确释放
+- 简化异常处理
 
-### 4. 优先级设置
+### 5. 优先级设置
 
 消息监听器优先级设为 `priority=1`，确保在 LLM 处理之前拦截消息。
 
-### 5. 超时保护
+### 6. 超时保护
 
 30秒超时机制防止 iFlow 长时间无响应导致阻塞。
 
-### 6. 错误处理
+### 7. 错误处理
 
 - 捕获所有异常并记录日志
 - 超时错误单独处理并回复用户
 - iFlow 不可用时静默返回，不干扰正常功能
 
-### 7. 开关控制
+### 8. 工作目录隔离
+
+使用 AstrBot 的插件数据目录作为 SDK 的工作目录：
+- 避免文件路径冲突
+- 提供更好的文件隔离
+- 便于插件数据管理
+
+### 9. 文件访问控制
+
+设置 `file_access=False` 禁用文件访问：
+- 避免路径检查问题
+- 提高安全性
+- 简化配置需求
+
+### 10. 开关控制
 
 提供运行时控制指令，允许用户动态启用/禁用消息转发。
 
@@ -322,7 +347,7 @@ iFlow CLI 在宿主机上以守护进程方式常驻运行，提供 ACP 服务�
 
 ## 常见问题
 
-### Q: 插件启动后显示 "iFlow ACP 服务连接失败"？
+### Q: 插件启动后显示 "初始化 iFlow SDK 客户端失败"？
 
 A: 确保 iFlow CLI 在宿主机上以守护进程运行并启动了 ACP 服务：
 
@@ -336,6 +361,7 @@ A: 检查以下事项：
 1. 使用 `host.docker.internal` 访问宿主机（Docker Desktop 默认支持）
 2. 或使用 `--network host` 模式运行容器
 3. 检查防火墙设置
+4. 确保容器启动时添加了 `--add-host=host.docker.internal:host-gateway` 参数
 
 ### Q: 消息没有转发到 iFlow？
 
@@ -344,6 +370,7 @@ A: 检查以下事项：
 2. 确认消息转发已启用（`/iflow on`）
 3. 检查 AstrBot 日志中的错误信息
 4. 确认 iFlow ACP 服务正在运行
+5. 确认 `iflow-cli-sdk` 已正确安装
 
 ### Q: 如何调整超时时间？
 
@@ -361,6 +388,22 @@ export IFLOW_ACP_URL=ws://your-host:8090/acp
 
 A: 支持所有文本消息（群聊和私聊），空消息和纯表情消息会被跳过。
 
+### Q: 插件数据存储在哪里？
+
+A: 插件使用 AstrBot 的插件数据目录作为工作目录，通常位于 `{astrbot_data_path}/plugin_data/astrbot_plugin_iflow`。
+
+### Q: 为什么禁用了文件访问？
+
+A: 设置 `file_access=False` 可以避免路径检查问题，简化配置需求，并提高安全性。如果需要文件访问功能，可以修改 `main.py` 中的配置。
+
+### Q: 如何安装 iflow-cli-sdk？
+
+A: 插件会自动安装 requirements.txt 中定义的依赖。如果需要手动安装：
+
+```bash
+pip install iflow-cli-sdk>=0.1.11
+```
+
 ## 扩展方向
 
 ### 可能的改进
@@ -371,6 +414,7 @@ A: 支持所有文本消息（群聊和私聊），空消息和纯表情消息�
 
 2. **配置文件支持**
    - 添加配置文件支持超时时间、默认状态等
+   - 支持通过配置文件自定义 SDK 选项
 
 3. **消息过滤**
    - 支持按群组/用户过滤
@@ -383,26 +427,35 @@ A: 支持所有文本消息（群聊和私聊），空消息和纯表情消息�
 5. **性能优化**
    - 消息队列处理
    - 批量转发支持
-   - 连接池管理
+   - 客户端连接池管理
+
+6. **SDK 功能扩展**
+   - 利用 SDK 提供的更多功能（如文件访问、工具调用等）
+   - 支持多轮对话上下文管理
+   - 支持更复杂的消息类型（图片、文件等）
+
+7. **健康检查**
+   - 定期检查 iFlow ACP 服务状态
+   - 提供健康状态报告
 
 ## 相关资源
 
 - [AstrBot 插件开发文档](https://docs.astrbot.app/dev/star/plugin-new.html)
 - [iFlow 官网](https://iflow.cn)
 - [ACP 协议文档](https://agentcommunicationprotocol.dev/)
+- [iFlow CLI SDK](https://pypi.org/project/iflow-cli-sdk/)
 - [Python asyncio 文档](https://docs.python.org/3/library/asyncio.html)
-- [websockets 库文档](https://websockets.readthedocs.io/)
 
 ## 维护说明
 
 ### 发布新版本流程
 
 1. 更新 `metadata.yaml` 中的版本号
-2. 更新 `main.py` 中的版本号
+2. 更新 `main.py` 中 `@register` 装饰器的版本号
 3. 更新 `requirements.txt`（如有依赖变更）
 4. 更新 `README.md` 中的变更日志
 5. 更新 `AGENTS.md` 文档版本
-6. 测试所有功能
+6. 测试所有功能（包括与 iFlow CLI SDK 的集成）
 7. 提交 Git commit
 8. 推送到远程仓库
 
@@ -418,12 +471,14 @@ A: 支持所有文本消息（群聊和私聊），空消息和纯表情消息�
 
 ---
 
-**文档版本**: 2.0.0
+**文档版本**: 2.1.0
 
 **文档生成时间**: 2026-01-31
 
-**最后更新**: 2026-01-31
+**最后更新**: 2026-02-01
 
-**插件版本**: v1.0.0
+**插件版本**: v2.0.0
+
+**SDK 版本**: iflow-cli-sdk >= 0.1.11
 
 **协议版本**: ACP v1

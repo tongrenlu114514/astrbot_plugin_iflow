@@ -1,6 +1,6 @@
 name: astrbot_plugin_iflow
 display_name: iFlow 插件
-desc: AstrBot iFlow 插件 - 自动转发消息到 iFlow CLI (心流 CLI) 并回复处理结果
-version: v2.0.0
+desc: AstrBot iFlow 插件 - 自动转发消息到 iFlow CLI (心流 CLI) 并回复处理结果，支持群组独立会话和会话持久化
+version: v4.0.0
 author: tongrenlu114514
 repo: https://github.com/tongrenlu114514/astrbot_plugin_iflow
