@@ -58,16 +58,41 @@ class IFlowPlugin(Star):
         
         群聊消息使用群组ID，私聊消息使用用户ID
         """
-        # 尝试获取群组ID
-        if hasattr(event, 'group_id') and event.group_id:
-            return f"group_{event.group_id}"
+        # 调试：打印事件对象的所有属性
+        event_attrs = [attr for attr in dir(event) if not attr.startswith('_')]
+        logger.debug(f"事件对象属性: {event_attrs}")
         
-        # 尝试获取用户ID（私聊）
-        if hasattr(event, 'user_id') and event.user_id:
-            return f"private_{event.user_id}"
+        # 尝试多种可能的属性名来获取群组ID
+        group_id = None
+        for attr in ['group_id', 'group', 'groupId', 'groupInfo']:
+            if hasattr(event, attr):
+                group_id = getattr(event, attr)
+                if group_id:
+                    logger.info(f"检测到群组ID ({attr}): {group_id}")
+                    return f"group_{group_id}"
         
-        # 兜底方案：使用唯一标识
-        return f"unknown_{id(event)}"
+        # 尝试多种可能的属性名来获取用户ID
+        user_id = None
+        for attr in ['user_id', 'user', 'userId', 'sender_id', 'sender', 'senderId']:
+            if hasattr(event, attr):
+                user_id = getattr(event, attr)
+                if user_id:
+                    logger.info(f"检测到用户ID ({attr}): {user_id}")
+                    return f"private_{user_id}"
+        
+        # 尝试从 session 或 channel_id 获取
+        for attr in ['session', 'channel_id', 'channelId', 'chat_id', 'chatId']:
+            if hasattr(event, attr):
+                chat_id = getattr(event, attr)
+                if chat_id:
+                    logger.info(f"检测到会话ID ({attr}): {chat_id}")
+                    return f"chat_{chat_id}"
+        
+        # 兜底方案：使用消息内容的哈希作为会话ID（不太理想，但比 unknown 更好）
+        import hashlib
+        content_hash = hashlib.md5(event.message_str.encode()).hexdigest()[:8]
+        logger.warning(f"无法获取会话ID，使用消息内容哈希: {content_hash}")
+        return f"hash_{content_hash}"
     
     async def get_or_create_session(self, session_id: str) -> Optional[IFlowClient]:
         """获取或创建会话客户端
@@ -433,8 +458,13 @@ class IFlowPlugin(Star):
             return
 
         try:
+            # 调试：打印事件类型和部分属性
+            logger.info(f"收到消息: {message_str[:50]}...")
+            logger.info(f"事件类型: {type(event).__name__}")
+            
             # 获取会话ID
             session_id = await self.get_session_id(event)
+            logger.info(f"会话ID: {session_id}")
             
             # 获取或创建会话
             client = await self.get_or_create_session(session_id)
@@ -449,8 +479,12 @@ class IFlowPlugin(Star):
                 return
             
             async with session_lock:
-                # 直接发送消息，不使用 async with（保持会话）
-                await client.send_message(message_str)
+                # 添加当前时间信息到系统提示词
+                current_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+                system_prompt = f"[系统提示] 当前时间: {current_time}\n\n用户消息:\n{message_str}"
+                
+                # 发送消息（附带时间信息）
+                await client.send_message(system_prompt)
                 
                 # 收集响应
                 response_parts = []
