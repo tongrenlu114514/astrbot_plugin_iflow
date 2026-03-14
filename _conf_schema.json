@@ -1,1 +1,32 @@
-{"acp_url": {"description": "iFlow ACP 服务地址", "type": "string", "default": "ws://host.docker.internal:8090/acp", "hint": "iFlow CLI 的 ACP WebSocket 服务地址，通常格式为 ws://host:port/acp"}, "timeout": {"description": "处理超时时间（秒）", "type": "int", "default": 30, "hint": "iFlow 处理请求的最大等待时间，超时后将取消请求"}, "enabled": {"description": "启用消息转发", "type": "bool", "default": true, "hint": "是否自动将消息转发到 iFlow 处理"}}
+{
+  "acp_url": {
+    "description": "iFlow ACP 服务地址",
+    "type": "string",
+    "default": "ws://host.docker.internal:8090/acp",
+    "hint": "iFlow CLI 的 ACP WebSocket 服务地址，通常格式为 ws://host:port/acp"
+  },
+  "timeout": {
+    "description": "处理超时时间（秒）",
+    "type": "int",
+    "default": 30,
+    "hint": "iFlow 处理请求的最大等待时间，超时后将取消请求"
+  },
+  "enabled": {
+    "description": "启用消息转发",
+    "type": "bool",
+    "default": true,
+    "hint": "是否自动将消息转发到 iFlow 处理"
+  },
+  "enable_optimize": {
+    "description": "启用提示词优化",
+    "type": "bool",
+    "default": false,
+    "hint": "是否启用提示词自动优化功能，非闲聊场景会优化提示词后再处理"
+  },
+  "skip_short_message": {
+    "description": "跳过短消息优化（字符数）",
+    "type": "int",
+    "default": 10,
+    "hint": "消息长度小于此值时跳过优化，避免对简单问候进行不必要的处理"
+  }
+}

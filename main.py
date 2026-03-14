@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import re
 from datetime import datetime, timezone
 from typing import Optional, Dict
 
@@ -19,6 +20,41 @@ from astrbot.core.utils.astrbot_path import get_astrbot_data_path
     "https://github.com/tongrenlu114514/astrbot_plugin_iflow",
 )
 class IFlowPlugin(Star):
+    # 简单闲聊模式（不需要优化）
+    SIMPLE_CHITCHAT_PATTERNS = [
+        r'^(你|您)?好[啊呀]?$',           # 你好、好啊
+        r'^hi+$',                         # hi, hiii
+        r'^hello$',                       # hello
+        r'^(早上|晚上|下午)?好[啊呀]?$',   # 早上好
+        r'^[嗨哈喽]+$',                   # 嗨、哈喽
+        r'^(谢谢|感谢|thanks?)[你您]?$',  # 谢谢
+        r'^(再见|拜拜|bye)+$',            # 再见、拜拜
+        r'^[嗯哦额]+$',                   # 嗯、哦
+        r'^好[的啊呀]?$',                 # 好的
+        r'^ok$',                          # ok
+    ]
+    
+    # 需要优化的关键词模式
+    OPTIMIZE_KEYWORDS = [
+        '写', '帮', '代码', '脚本', '函数', '实现', '修复', '优化',
+        '分析', '总结', '翻译', '解释', '比较', '生成', '创作'
+    ]
+    
+    # 提示词优化模板
+    OPTIMIZE_PROMPT_TEMPLATE = """请优化以下用户提示词，使其更加清晰、具体、有效。
+
+优化原则：
+1. 明确任务目标和预期输出格式
+2. 添加必要的上下文和约束条件
+3. 使用结构化格式提高可读性
+4. 保持用户原始意图不变
+
+原始提示词：
+{original_prompt}
+
+请直接输出优化后的提示词，不要解释：
+"""
+
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
         # 从配置文件读取设置
@@ -26,6 +62,10 @@ class IFlowPlugin(Star):
         self.iflow_enabled = config.get("enabled", True)
         self.timeout = config.get("timeout", 30)
         self.acp_url = config.get("acp_url", "ws://host.docker.internal:8090/acp")
+        
+        # 提示词优化配置
+        self.enable_optimize = config.get("enable_optimize", False)
+        self.skip_short_message = config.get("skip_short_message", 10)
         
         # 会话池相关属性
         self.sessions: Dict[str, IFlowClient] = {}  # 会话池: session_id -> client
@@ -447,6 +487,72 @@ class IFlowPlugin(Star):
             logger.error(f"恢复会话 {session_id} 失败: {e}")
             return False
 
+    def _is_simple_chitchat(self, message: str) -> bool:
+        """判断是否是简单闲聊
+        
+        Args:
+            message: 用户消息
+            
+        Returns:
+            bool: 是否是简单闲聊
+        """
+        msg = message.strip().lower()
+        for pattern in self.SIMPLE_CHITCHAT_PATTERNS:
+            if re.match(pattern, msg, re.IGNORECASE):
+                return True
+        return False
+
+    def _should_optimize(self, message: str) -> bool:
+        """判断是否需要优化提示词
+        
+        Args:
+            message: 用户消息
+            
+        Returns:
+            bool: 是否需要优化
+        """
+        msg = message.strip()
+        
+        # 跳过短消息
+        if len(msg) < self.skip_short_message:
+            return False
+        
+        # 简单闲聊不优化
+        if self._is_simple_chitchat(msg):
+            return False
+        
+        # 检查是否包含需要优化的关键词
+        for keyword in self.OPTIMIZE_KEYWORDS:
+            if keyword in msg:
+                return True
+        
+        # 默认不优化
+        return False
+
+    async def _optimize_prompt(self, client: IFlowClient, message: str) -> str:
+        """优化提示词
+        
+        Args:
+            client: iFlow 客户端
+            message: 原始消息
+            
+        Returns:
+            str: 优化后的消息
+        """
+        optimize_prompt = self.OPTIMIZE_PROMPT_TEMPLATE.format(original_prompt=message)
+        
+        await client.send_message(optimize_prompt)
+        
+        response_parts = []
+        async for msg in client.receive_messages():
+            if isinstance(msg, AssistantMessage):
+                response_parts.append(msg.chunk.text)
+            elif isinstance(msg, TaskFinishMessage):
+                break
+        
+        optimized = "".join(response_parts).strip()
+        return optimized if optimized else message
+
     @filter.event_message_type(filter.EventMessageType.ALL, priority=1)
     async def on_message(self, event: AstrMessageEvent):
         """监听所有消息，转发到对应的 iFlow 会话并回复结果"""
@@ -479,9 +585,22 @@ class IFlowPlugin(Star):
                 return
             
             async with session_lock:
+                # 处理后的消息
+                processed_message = message_str
+                
+                # 提示词优化逻辑
+                if self.enable_optimize and self._should_optimize(message_str):
+                    logger.info(f"开始优化提示词: {message_str[:30]}...")
+                    optimized = await self._optimize_prompt(client, message_str)
+                    if optimized != message_str:
+                        logger.info(f"提示词已优化")
+                        processed_message = optimized
+                    else:
+                        logger.info(f"提示词未发生变化，使用原始消息")
+                
                 # 添加当前时间信息到系统提示词
                 current_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-                system_prompt = f"[系统提示] 当前时间: {current_time}\n\n用户消息:\n{message_str}"
+                system_prompt = f"[系统提示] 当前时间: {current_time}\n\n用户消息:\n{processed_message}"
                 
                 # 发送消息（附带时间信息）
                 await client.send_message(system_prompt)
