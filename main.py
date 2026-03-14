@@ -529,11 +529,10 @@ class IFlowPlugin(Star):
         # 默认不优化
         return False
 
-    async def _optimize_prompt(self, client: IFlowClient, message: str) -> str:
-        """优化提示词
+    async def _optimize_prompt(self, message: str) -> str:
+        """优化提示词（使用临时连接，不影响主会话上下文）
         
         Args:
-            client: iFlow 客户端
             message: 原始消息
             
         Returns:
@@ -541,17 +540,44 @@ class IFlowPlugin(Star):
         """
         optimize_prompt = self.OPTIMIZE_PROMPT_TEMPLATE.format(original_prompt=message)
         
-        await client.send_message(optimize_prompt)
+        # 创建临时工作目录
+        temp_dir = os.path.join(self.sessions_dir, "_optimize_temp")
+        os.makedirs(temp_dir, exist_ok=True)
         
-        response_parts = []
-        async for msg in client.receive_messages():
-            if isinstance(msg, AssistantMessage):
-                response_parts.append(msg.chunk.text)
-            elif isinstance(msg, TaskFinishMessage):
-                break
+        # 创建临时客户端连接
+        temp_options = IFlowOptions(
+            url=self.acp_url,
+            auto_start_process=False,
+            timeout=self.timeout,
+            cwd=temp_dir,
+            file_access=False,
+        )
         
-        optimized = "".join(response_parts).strip()
-        return optimized if optimized else message
+        temp_client = IFlowClient(temp_options)
+        
+        try:
+            await temp_client.connect()
+            await temp_client.send_message(optimize_prompt)
+            
+            response_parts = []
+            async for msg in temp_client.receive_messages():
+                if isinstance(msg, AssistantMessage):
+                    response_parts.append(msg.chunk.text)
+                elif isinstance(msg, TaskFinishMessage):
+                    break
+            
+            optimized = "".join(response_parts).strip()
+            return optimized if optimized else message
+            
+        except Exception as e:
+            logger.error(f"提示词优化失败: {e}")
+            return message  # 失败时返回原始消息
+            
+        finally:
+            try:
+                await temp_client.close()
+            except Exception:
+                pass
 
     @filter.event_message_type(filter.EventMessageType.ALL, priority=1)
     async def on_message(self, event: AstrMessageEvent):
@@ -591,7 +617,7 @@ class IFlowPlugin(Star):
                 # 提示词优化逻辑
                 if self.enable_optimize and self._should_optimize(message_str):
                     logger.info(f"开始优化提示词: {message_str[:30]}...")
-                    optimized = await self._optimize_prompt(client, message_str)
+                    optimized = await self._optimize_prompt(message_str)
                     if optimized != message_str:
                         logger.info(f"提示词已优化")
                         processed_message = optimized
