@@ -7,6 +7,19 @@
 
 ## [Unreleased]
 
+## [4.1.0] - 2026-03-14
+
+### 新增
+- ✨ 添加提示词优化功能，自动优化用户输入的提示词
+- ✨ 使用启发式规则判断场景，避免额外的 LLM 调用延迟
+- ✨ 支持检测简单闲聊（打招呼、感谢、告别等）并跳过优化
+- ✨ 新增配置项：
+  - `enable_optimize` - 是否启用提示词优化（默认关闭）
+  - `skip_short_message` - 跳过短消息优化阈值（默认 10 字符）
+
+### 变更
+- ♻️ 提示词优化通过当前 iFlow 会话进行，无需额外配置
+
 ## [4.0.0] - 2026-02-01
 
 ### 新增
@@ -70,7 +83,8 @@
 
 ---
 
-[Unreleased]: https://github.com/tongrenlu114514/astrbot_plugin_iflow/compare/v4.0.0...HEAD
+[Unreleased]: https://github.com/tongrenlu114514/astrbot_plugin_iflow/compare/v4.1.0...HEAD
+[4.1.0]: https://github.com/tongrenlu114514/astrbot_plugin_iflow/compare/v4.0.0...v4.1.0
 [4.0.0]: https://github.com/tongrenlu114514/astrbot_plugin_iflow/compare/v2.0.0...v4.0.0
 [2.0.0]: https://github.com/tongrenlu114514/astrbot_plugin_iflow/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/tongrenlu114514/astrbot_plugin_iflow/releases/tag/v1.0.0
