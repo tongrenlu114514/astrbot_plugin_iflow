@@ -28,5 +28,11 @@
     "type": "int",
     "default": 10,
     "hint": "消息长度小于此值时跳过优化，避免对简单问候进行不必要的处理"
+  },
+  "optimize_context_count": {
+    "description": "优化时包含的历史消息数",
+    "type": "int",
+    "default": 5,
+    "hint": "优化提示词时包含的对话历史条数，用于提供上下文信息"
   }
 }

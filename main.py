@@ -42,7 +42,7 @@ class IFlowPlugin(Star):
     
     # 提示词优化模板
     OPTIMIZE_PROMPT_TEMPLATE = """请优化以下用户提示词，使其更加清晰、具体、有效。
-
+{context_section}
 优化原则：
 1. 明确任务目标和预期输出格式
 2. 添加必要的上下文和约束条件
@@ -53,6 +53,13 @@ class IFlowPlugin(Star):
 {original_prompt}
 
 请直接输出优化后的提示词，不要解释：
+"""
+
+    # 历史上下文模板
+    CONTEXT_TEMPLATE = """以下是之前的对话历史，供优化参考：
+
+{history}
+
 """
 
     def __init__(self, context: Context, config: AstrBotConfig):
@@ -66,11 +73,13 @@ class IFlowPlugin(Star):
         # 提示词优化配置
         self.enable_optimize = config.get("enable_optimize", False)
         self.skip_short_message = config.get("skip_short_message", 10)
+        self.optimize_context_count = config.get("optimize_context_count", 5)  # 优化时包含的历史消息数
         
         # 会话池相关属性
         self.sessions: Dict[str, IFlowClient] = {}  # 会话池: session_id -> client
         self.session_locks: Dict[str, asyncio.Lock] = {}  # 每个会话的异步锁
         self.global_lock = asyncio.Lock()  # 保护共享资源的全局锁
+        self.session_histories: Dict[str, list] = {}  # 会话消息历史缓存: session_id -> [(role, message), ...]
         self.base_data_dir = ""  # 基础数据目录
         self.sessions_dir = ""  # 会话目录
 
@@ -225,6 +234,10 @@ class IFlowPlugin(Star):
                 if session_id in self.session_locks:
                     del self.session_locks[session_id]
                 
+                # 移除消息历史
+                if session_id in self.session_histories:
+                    del self.session_histories[session_id]
+                
                 # 移除会话元数据
                 await self._remove_session_metadata(session_id)
                 
@@ -249,6 +262,7 @@ class IFlowPlugin(Star):
             # 清空会话池
             self.sessions.clear()
             self.session_locks.clear()
+            self.session_histories.clear()
             
             # 清空元数据
             await self._save_sessions_metadata({
@@ -529,16 +543,51 @@ class IFlowPlugin(Star):
         # 默认不优化
         return False
 
-    async def _optimize_prompt(self, message: str) -> str:
+    def _get_context_for_optimize(self, session_id: str) -> str:
+        """获取用于优化的历史上下文
+        
+        Args:
+            session_id: 会话ID
+            
+        Returns:
+            str: 格式化的历史上下文字符串，如果没有历史则返回空字符串
+        """
+        history = self.session_histories.get(session_id, [])
+        if not history:
+            return ""
+        
+        # 只取最近 N 条消息
+        recent_history = history[-self.optimize_context_count:] if len(history) > self.optimize_context_count else history
+        
+        # 格式化历史
+        history_lines = []
+        for role, msg in recent_history:
+            role_name = "用户" if role == "user" else "助手"
+            # 截断过长的消息
+            truncated_msg = msg[:200] + "..." if len(msg) > 200 else msg
+            history_lines.append(f"[{role_name}] {truncated_msg}")
+        
+        return self.CONTEXT_TEMPLATE.format(history="\n".join(history_lines))
+
+    async def _optimize_prompt(self, message: str, session_id: str = None) -> str:
         """优化提示词（使用临时连接，不影响主会话上下文）
         
         Args:
             message: 原始消息
+            session_id: 会话ID，用于获取历史上下文
             
         Returns:
             str: 优化后的消息
         """
-        optimize_prompt = self.OPTIMIZE_PROMPT_TEMPLATE.format(original_prompt=message)
+        # 获取历史上下文
+        context_section = ""
+        if session_id:
+            context_section = self._get_context_for_optimize(session_id)
+        
+        optimize_prompt = self.OPTIMIZE_PROMPT_TEMPLATE.format(
+            context_section=context_section,
+            original_prompt=message
+        )
         
         # 创建临时工作目录
         temp_dir = os.path.join(self.sessions_dir, "_optimize_temp")
@@ -617,12 +666,17 @@ class IFlowPlugin(Star):
                 # 提示词优化逻辑
                 if self.enable_optimize and self._should_optimize(message_str):
                     logger.info(f"开始优化提示词: {message_str[:30]}...")
-                    optimized = await self._optimize_prompt(message_str)
+                    optimized = await self._optimize_prompt(message_str, session_id)
                     if optimized != message_str:
                         logger.info(f"提示词已优化")
                         processed_message = optimized
                     else:
                         logger.info(f"提示词未发生变化，使用原始消息")
+                
+                # 保存用户消息到历史
+                if session_id not in self.session_histories:
+                    self.session_histories[session_id] = []
+                self.session_histories[session_id].append(("user", message_str))
                 
                 # 添加当前时间信息到系统提示词
                 current_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
@@ -641,6 +695,8 @@ class IFlowPlugin(Star):
                 
                 result = "".join(response_parts)
                 if result:
+                    # 保存 AI 回复到历史
+                    self.session_histories[session_id].append(("assistant", result))
                     yield event.plain_result(result)
 
         except asyncio.TimeoutError:
