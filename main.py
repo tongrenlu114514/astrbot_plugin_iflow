@@ -695,9 +695,13 @@ class IFlowPlugin(Star):
                 
                 result = "".join(response_parts)
                 if result:
-                    # 保存 AI 回复到历史
+                    # 保存 AI 回复到历史（保留<think>标签内容）
                     self.session_histories[session_id].append(("assistant", result))
-                    yield event.plain_result(result)
+
+                    # 去除<think>标签内容后再转发回复
+                    cleaned_result = re.sub(r'<think>.*?</think>', '', result, flags=re.DOTALL)
+                    if cleaned_result.strip():
+                        yield event.plain_result(cleaned_result)
 
         except asyncio.TimeoutError:
             logger.error(f"会话 {session_id} 处理超时（{self.timeout}秒）")
