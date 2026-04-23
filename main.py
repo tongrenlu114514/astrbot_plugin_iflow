@@ -701,6 +701,11 @@ class IFlowPlugin(Star):
                     # 去除<think>标签内容后再转发回复
                     cleaned_result = re.sub(r'<think>.*?</think>', '', result, flags=re.DOTALL)
                     if cleaned_result.strip():
+                    # 清理多余的连续换行
+                    cleaned_result = re.sub(r'
+{3,}', r'
+
+', cleaned_result)
                         yield event.plain_result(cleaned_result)
 
         except asyncio.TimeoutError:
