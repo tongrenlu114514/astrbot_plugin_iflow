@@ -695,17 +695,14 @@ class IFlowPlugin(Star):
                 
                 result = "".join(response_parts)
                 if result:
-                    # 保存 AI 回复到历史（保留<think>标签内容）
+                    # 保存 AI 回复到历史
                     self.session_histories[session_id].append(("assistant", result))
 
                     # 去除<think>标签内容后再转发回复
                     cleaned_result = re.sub(r'<think>.*?</think>', '', result, flags=re.DOTALL)
-                    if cleaned_result.strip():
                     # 清理多余的连续换行
-                    cleaned_result = re.sub(r'
-{3,}', r'
-
-', cleaned_result)
+                    cleaned_result = re.sub(r'\n{3,}', '\n\n', cleaned_result)
+                    if cleaned_result.strip():
                         yield event.plain_result(cleaned_result)
 
         except asyncio.TimeoutError:
